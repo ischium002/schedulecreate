@@ -129,6 +129,52 @@
     }
 
     #canvasContainer canvas { border-radius: 10px; }
+
+    /* —— 移动端：触屏加大可点区域 —— */
+    @media (max-width: 768px), (pointer: coarse) {
+        .chip {
+            padding: 12px 16px;
+            font-size: 16px;
+        }
+
+        input[type="text"], input[type="date"] {
+            padding: 12px;
+            font-size: 16px; /* 低于 16px 会触发 iOS 聚焦自动放大 */
+        }
+
+        .export-btn {
+            padding: 14px 20px;
+            font-size: 17px;
+        }
+    }
+
+    /* —— 移动端：预览在上、控制在下，导出常驻拇指位 —— */
+    @media (max-width: 768px) {
+        body { display: flex; flex-direction: column; }
+
+        .stage-outer { order: 0; margin: 10px auto; }
+
+        .controls {
+            order: 1;
+            position: static;
+            border-bottom: none;
+            background: transparent;
+            backdrop-filter: none;
+        }
+
+        .group { flex: 1 1 100%; }
+
+        .export-group {
+            position: sticky;
+            bottom: 0;
+            z-index: 1000;
+            background: rgba(21, 22, 31, 0.95);
+            border-color: var(--accent);
+            padding-bottom: calc(8px + env(safe-area-inset-bottom));
+        }
+
+        .export-group .export-btn { flex: 1; }
+    }
 </style>
 </head>
 <body>
@@ -174,7 +220,7 @@
         </div>
     </div>
 
-    <div class="group">
+    <div class="group export-group">
         <label>导出</label>
         <div class="row">
             <button class="export-btn" onclick="saveAsImage()">就这样！</button>
@@ -560,13 +606,27 @@
         drawMainCanvas();
     }
 
+    // 触屏设备优先走系统分享面板（存相册/发微信一步到位），其余情况回落为下载
     function downloadCanvas(canvas, filename) {
-        const link = document.createElement("a");
-        link.download = filename;
-        link.href = canvas.toDataURL("image/png");
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        canvas.toBlob(async (blob) => {
+            const file = new File([blob], filename, { type: "image/png" });
+            const wantShare = matchMedia("(pointer: coarse)").matches;
+            if (wantShare && navigator.canShare && navigator.canShare({ files: [file] })) {
+                try {
+                    await navigator.share({ files: [file] });
+                    return;
+                } catch (error) {
+                    if (error.name === "AbortError") return; // 用户自己取消的，别再塞一次下载
+                }
+            }
+            const link = document.createElement("a");
+            link.download = filename;
+            link.href = URL.createObjectURL(blob);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+        }, "image/png");
     }
 
     function saveAsImage() {
